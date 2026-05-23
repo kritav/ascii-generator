@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ASCII Art Generator</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0a0a0a;
+      color: #0f0;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    #output {
+      margin: 0;
+      padding: 16px;
+      font-size: 8px;
+      line-height: 1;
+      letter-spacing: 0;
+      white-space: pre;
+      font-family: 'Courier New', Courier, monospace;
+    }
+    #canvas {
+      display: none;
+    }
+    #source {
+      display: none;
+    }
+    #status {
+      padding: 16px;
+      color: #0f0;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Loading image…</div>
+  <pre id="output"></pre>
+  <canvas id="canvas"></canvas>
+  <img id="source" crossorigin="anonymous"
+       src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/960px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg"
+       alt="source image" />
+
+  <script>
+    // Paul Bourke's 70-character grayscale ramp, dark -> light.
+    // Sorted darkest to lightest.
+    const RAMP = '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ';
+
+    function imageToAscii(img, targetWidth) {
+      // Monospace cells are ~2x taller than wide, so halve the row count
+      const aspect = img.naturalHeight / img.naturalWidth;
+      const targetHeight = Math.max(1, Math.round(aspect * targetWidth * 0.5));
+
+      const canvas = document.getElementById('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+      const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      const rampLast = RAMP.length - 1;
+
+      let out = '';
+      for (let y = 0; y < targetHeight; y++) {
+        for (let x = 0; x < targetWidth; x++) {
+          const i = (y * targetWidth + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          // Rec. 601 luminance
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          const idx = Math.round((lum / 255) * rampLast);
+          out += RAMP[idx];
+        }
+        out += '\n';
+      }
+      return out;
+    }
+
+    const img = document.getElementById('source');
+    const output = document.getElementById('output');
+    const status = document.getElementById('status');
+
+    img.addEventListener('load', () => {
+      try {
+        const ascii = imageToAscii(img, 120);
+        output.textContent = ascii;
+        status.textContent = '';
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message +
+          ' (likely a CORS issue — try a local image file).';
+      }
+    });
+
+    img.addEventListener('error', () => {
+      status.textContent = 'Failed to load image.';
+    });
+  </script>
+</body>
+</html>
