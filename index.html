@@ -4,98 +4,305 @@
   <meta charset="UTF-8" />
   <title>ASCII Art Generator</title>
   <style>
+    * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
+      min-height: 100vh;
       background: #0a0a0a;
       color: #0f0;
       font-family: 'Courier New', Courier, monospace;
     }
+    body {
+      border: 2px solid transparent;
+      transition: border-color 0.1s;
+    }
+    body.dragging {
+      border-color: #0f0;
+    }
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #1a3a1a;
+      font-size: 12px;
+      position: sticky;
+      top: 0;
+      background: #0a0a0a;
+      z-index: 10;
+    }
+    #controls label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #0f0;
+    }
+    #controls input[type="range"] { accent-color: #0f0; }
+    #controls select,
+    #controls input[type="range"] {
+      background: #0a0a0a;
+      color: #0f0;
+      border: 1px solid #1a3a1a;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 2px 4px;
+    }
+    #width-val {
+      display: inline-block;
+      min-width: 32px;
+      text-align: right;
+      color: #6f6;
+    }
+    main {
+      position: relative;
+      padding: 16px;
+    }
+    #empty {
+      text-align: center;
+      padding: 80px 16px;
+      color: #0f0;
+      font-size: 14px;
+      opacity: 0.7;
+    }
+    #empty a {
+      color: #0f0;
+      text-decoration: underline;
+      cursor: pointer;
+    }
     #output {
       margin: 0;
-      padding: 16px;
       font-size: 8px;
       line-height: 1;
       letter-spacing: 0;
       white-space: pre;
       font-family: 'Courier New', Courier, monospace;
+      overflow-x: auto;
     }
-    #canvas {
-      display: none;
-    }
-    #source {
-      display: none;
-    }
-    #status {
-      padding: 16px;
-      color: #0f0;
+    #output:empty { display: none; }
+    #error {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 8px 16px;
+      background: #300;
+      color: #f66;
+      border: 1px solid #f66;
       font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
     }
+    #error.show { opacity: 1; }
+    #canvas { display: none; }
+    #file-input { display: none; }
   </style>
 </head>
 <body>
-  <div id="status">Loading image…</div>
-  <pre id="output"></pre>
+  <header id="controls">
+    <label>
+      Width
+      <input type="range" id="width" min="40" max="300" value="120" />
+      <span id="width-val">120</span>
+    </label>
+    <label><input type="checkbox" id="color" checked /> Color</label>
+    <label>
+      Ramp
+      <select id="ramp">
+        <option value="standard">Standard</option>
+        <option value="simple">Simple</option>
+        <option value="blocks">Blocks</option>
+        <option value="binary">Binary</option>
+      </select>
+    </label>
+    <label><input type="checkbox" id="invert" /> Invert</label>
+  </header>
+
+  <main>
+    <div id="empty">drop an image anywhere — or <a id="browse">browse</a></div>
+    <pre id="output"></pre>
+  </main>
+
   <canvas id="canvas"></canvas>
-  <img id="source" crossorigin="anonymous"
-       src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/960px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg"
-       alt="source image" />
+  <input type="file" id="file-input" accept="image/*" />
+  <div id="error"></div>
 
   <script>
-    // Paul Bourke's 70-character grayscale ramp, dark -> light.
-    // Sorted darkest to lightest.
-    const RAMP = '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ';
+    // All ramps stored dark -> light (low luminance to high luminance).
+    // Standard is Paul Bourke's 70-char ramp; others are reversed from the
+    // common light-to-dark form so the indexing math is uniform.
+    const RAMPS = {
+      standard: '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
+      simple:   '@%#*+=-:. ',
+      blocks:   '█▓▒░ ',
+      binary:   '# ',
+    };
 
-    function imageToAscii(img, targetWidth) {
-      // Monospace cells are ~2x taller than wide, so halve the row count
+    const state = {
+      image: null,
+      width: 120,
+      color: true,
+      ramp: 'standard',
+      invert: false,
+    };
+
+    const els = {
+      output: document.getElementById('output'),
+      empty: document.getElementById('empty'),
+      canvas: document.getElementById('canvas'),
+      width: document.getElementById('width'),
+      widthVal: document.getElementById('width-val'),
+      color: document.getElementById('color'),
+      ramp: document.getElementById('ramp'),
+      invert: document.getElementById('invert'),
+      fileInput: document.getElementById('file-input'),
+      browse: document.getElementById('browse'),
+      error: document.getElementById('error'),
+    };
+
+    function escapeHtmlChar(c) {
+      switch (c) {
+        case '<': return '&lt;';
+        case '>': return '&gt;';
+        case '&': return '&amp;';
+        case '"': return '&quot;';
+        case "'": return '&#39;';
+        default:  return c;
+      }
+    }
+
+    function imageToAscii(img, opts) {
+      const { width, color, ramp, invert } = opts;
       const aspect = img.naturalHeight / img.naturalWidth;
-      const targetHeight = Math.max(1, Math.round(aspect * targetWidth * 0.5));
+      const height = Math.max(1, Math.round(aspect * width * 0.5));
 
-      const canvas = document.getElementById('canvas');
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-
+      const canvas = els.canvas;
+      canvas.width = width;
+      canvas.height = height;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+      ctx.drawImage(img, 0, 0, width, height);
 
-      const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
-      const rampLast = RAMP.length - 1;
+      const { data } = ctx.getImageData(0, 0, width, height);
+      const rampStr = RAMPS[ramp];
+      const last = rampStr.length - 1;
 
       let out = '';
-      for (let y = 0; y < targetHeight; y++) {
-        for (let x = 0; x < targetWidth; x++) {
-          const i = (y * targetWidth + x) * 4;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const i = (y * width + x) * 4;
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
-          // Rec. 601 luminance
           const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          const idx = Math.round((lum / 255) * rampLast);
-          out += RAMP[idx];
+          let idx = Math.round((lum / 255) * last);
+          if (invert) idx = last - idx;
+          const ch = escapeHtmlChar(rampStr[idx]);
+          if (color) {
+            out += '<span style="color:rgb(' + r + ',' + g + ',' + b + ')">' + ch + '</span>';
+          } else {
+            out += ch;
+          }
         }
         out += '\n';
       }
       return out;
     }
 
-    const img = document.getElementById('source');
-    const output = document.getElementById('output');
-    const status = document.getElementById('status');
-
-    img.addEventListener('load', () => {
-      try {
-        const ascii = imageToAscii(img, 120);
-        output.textContent = ascii;
-        status.textContent = '';
-      } catch (err) {
-        status.textContent = 'Error: ' + err.message +
-          ' (likely a CORS issue — try a local image file).';
+    function render() {
+      if (!state.image) {
+        els.output.innerHTML = '';
+        els.empty.style.display = '';
+        return;
       }
+      els.empty.style.display = 'none';
+      els.output.innerHTML = imageToAscii(state.image, state);
+    }
+
+    function loadImageFromUrl(url) {
+      const img = new Image();
+      img.onload = () => {
+        state.image = img;
+        render();
+      };
+      img.onerror = () => showError('Failed to load image.');
+      img.src = url;
+    }
+
+    function handleFile(file) {
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showError('Not an image file.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => loadImageFromUrl(reader.result);
+      reader.onerror = () => showError('Failed to read file.');
+      reader.readAsDataURL(file);
+    }
+
+    let errorTimer = null;
+    function showError(msg) {
+      els.error.textContent = msg;
+      els.error.classList.add('show');
+      clearTimeout(errorTimer);
+      errorTimer = setTimeout(() => els.error.classList.remove('show'), 2500);
+    }
+
+    // ---- Settings wiring ----
+    els.width.addEventListener('input', () => {
+      state.width = parseInt(els.width.value, 10);
+      els.widthVal.textContent = state.width;
+      render();
+    });
+    els.color.addEventListener('change', () => {
+      state.color = els.color.checked;
+      render();
+    });
+    els.ramp.addEventListener('change', () => {
+      state.ramp = els.ramp.value;
+      render();
+    });
+    els.invert.addEventListener('change', () => {
+      state.invert = els.invert.checked;
+      render();
     });
 
-    img.addEventListener('error', () => {
-      status.textContent = 'Failed to load image.';
+    // ---- File input / browse link ----
+    els.browse.addEventListener('click', (e) => {
+      e.preventDefault();
+      els.fileInput.click();
     });
-  </script>
+    els.fileInput.addEventListener('change', (e) => {
+      handleFile(e.target.files[0]);
+      els.fileInput.value = '';
+    });
+
+    // ---- Drag and drop on the whole page ----
+    let dragDepth = 0;
+    window.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragDepth++;
+      document.body.classList.add('dragging');
+    });
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+    window.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) document.body.classList.remove('dragging');
+    });
+    window.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragDepth = 0;
+      document.body.classList.remove('dragging');
+      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handleFile(file);
+    });
+
+    render();
+    </script>
 </body>
 </html>
