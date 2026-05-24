@@ -25,4 +25,3 @@ python3 -m http.server 8000
 
 ## Examples
 
-<!-- add examples here -->
