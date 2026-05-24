@@ -17,9 +17,8 @@
       border: 2px solid transparent;
       transition: border-color 0.1s;
     }
-    body.dragging {
-      border-color: #0f0;
-    }
+    body.dragging { border-color: #0f0; }
+
     #controls {
       display: flex;
       flex-wrap: wrap;
@@ -49,12 +48,78 @@
       font-size: 12px;
       padding: 2px 4px;
     }
+    #controls select:disabled { opacity: 0.4; cursor: not-allowed; }
     #width-val {
       display: inline-block;
       min-width: 32px;
       text-align: right;
       color: #6f6;
     }
+
+    .mode-group {
+      display: inline-flex;
+      border: 1px solid #1a3a1a;
+    }
+    .mode-btn {
+      background: transparent;
+      color: #0f0;
+      border: none;
+      border-right: 1px solid #1a3a1a;
+      padding: 4px 12px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .mode-btn:last-child { border-right: none; }
+    .mode-btn.active {
+      background: #0f0;
+      color: #0a0a0a;
+    }
+    .mode-btn:hover:not(.active) { background: #1a3a1a; }
+
+    .action-btn {
+      background: transparent;
+      color: #0f0;
+      border: none;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 4px;
+      min-width: 56px;
+      text-align: left;
+    }
+    .action-btn:hover { color: #6f6; }
+    .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #cap-note {
+      font-size: 11px;
+      color: #6f6;
+      opacity: 0.7;
+      display: none;
+    }
+    #cap-note.show { display: inline; }
+
+    #live-indicator {
+      margin-left: auto;
+      color: #f44;
+      font-size: 12px;
+      display: none;
+      letter-spacing: 1px;
+    }
+    #live-indicator.show { display: inline; }
+
+    #status {
+      padding: 6px 16px;
+      font-size: 11px;
+      color: #6f6;
+      opacity: 0.7;
+      border-bottom: 1px solid #1a3a1a;
+      background: #0a0a0a;
+      position: sticky;
+      top: 41px;
+      z-index: 9;
+    }
+
     main {
       position: relative;
       padding: 16px;
@@ -71,6 +136,8 @@
       text-decoration: underline;
       cursor: pointer;
     }
+    #empty.error { color: #f66; opacity: 1; }
+
     #output {
       margin: 0;
       font-size: 8px;
@@ -81,9 +148,35 @@
       overflow-x: auto;
     }
     #output:empty { display: none; }
+
+    #video-controls {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-top: 1px solid #1a3a1a;
+      font-size: 12px;
+      background: #0a0a0a;
+      position: sticky;
+      bottom: 0;
+    }
+    #video-controls.show { display: flex; }
+    #playpause {
+      background: transparent;
+      color: #0f0;
+      border: 1px solid #1a3a1a;
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 2px 12px;
+      min-width: 36px;
+    }
+    #playpause:hover { background: #1a3a1a; }
+    #time { color: #6f6; }
+
     #error {
       position: fixed;
-      bottom: 16px;
+      bottom: 60px;
       left: 50%;
       transform: translateX(-50%);
       padding: 8px 16px;
@@ -94,19 +187,26 @@
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.2s;
+      z-index: 100;
     }
     #error.show { opacity: 1; }
-    #canvas { display: none; }
-    #file-input { display: none; }
+
+    #canvas, #file-input, #video-file-input, #video-source { display: none; }
   </style>
 </head>
 <body>
   <header id="controls">
+    <div class="mode-group" id="mode-group">
+      <button class="mode-btn active" data-mode="image">image</button>
+      <button class="mode-btn" data-mode="webcam">webcam</button>
+      <button class="mode-btn" data-mode="video">video</button>
+    </div>
     <label>
       Width
       <input type="range" id="width" min="40" max="300" value="120" />
       <span id="width-val">120</span>
     </label>
+    <span id="cap-note">capped at 150 in live modes</span>
     <label><input type="checkbox" id="color" checked /> Color</label>
     <label>
       Ramp
@@ -118,49 +218,85 @@
       </select>
     </label>
     <label><input type="checkbox" id="invert" /> Invert</label>
+    <label><input type="checkbox" id="edges" /> Edges</label>
+    <button class="action-btn" id="save" title="Download PNG">[save]</button>
+    <button class="action-btn" id="share" title="Copy URL">[share]</button>
+    <span id="live-indicator">● LIVE</span>
   </header>
+
+  <div id="status">[idle]</div>
 
   <main>
     <div id="empty">drop an image anywhere — or <a id="browse">browse</a></div>
     <pre id="output"></pre>
   </main>
 
+  <footer id="video-controls">
+    <button id="playpause" title="play/pause">⏸</button>
+    <span id="time">0:00 / 0:00</span>
+  </footer>
+
   <canvas id="canvas"></canvas>
+  <video id="video-source" playsinline muted></video>
   <input type="file" id="file-input" accept="image/*" />
+  <input type="file" id="video-file-input" accept="video/*" />
   <div id="error"></div>
 
   <script>
-    // All ramps stored dark -> light (low luminance to high luminance).
-    // Standard is Paul Bourke's 70-char ramp; others are reversed from the
-    // common light-to-dark form so the indexing math is uniform.
+    // All ramps stored dark -> light. Standard is Paul Bourke's 70-char ramp.
     const RAMPS = {
       standard: '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
       simple:   '@%#*+=-:. ',
       blocks:   '█▓▒░ ',
       binary:   '# ',
     };
+    const RAMP_KEYS = Object.keys(RAMPS);
+
+    const LIVE_WIDTH_CAP = 150;
+    const FRAME_INTERVAL_MS = 33; // ~30 fps
+    const EDGE_THRESHOLD = 50;
 
     const state = {
-      image: null,
+      mode: 'image',
+      source: null,
       width: 120,
       color: true,
       ramp: 'standard',
       invert: false,
+      edges: false,
     };
+
+    let lastImage = null;
+    let webcamStream = null;
+    let videoObjectUrl = null;
 
     const els = {
       output: document.getElementById('output'),
       empty: document.getElementById('empty'),
       canvas: document.getElementById('canvas'),
+      videoSource: document.getElementById('video-source'),
       width: document.getElementById('width'),
       widthVal: document.getElementById('width-val'),
       color: document.getElementById('color'),
       ramp: document.getElementById('ramp'),
       invert: document.getElementById('invert'),
+      edges: document.getElementById('edges'),
+      save: document.getElementById('save'),
+      share: document.getElementById('share'),
+      status: document.getElementById('status'),
       fileInput: document.getElementById('file-input'),
+      videoFileInput: document.getElementById('video-file-input'),
       browse: document.getElementById('browse'),
       error: document.getElementById('error'),
+      modeGroup: document.getElementById('mode-group'),
+      liveIndicator: document.getElementById('live-indicator'),
+      capNote: document.getElementById('cap-note'),
+      videoControls: document.getElementById('video-controls'),
+      playpause: document.getElementById('playpause'),
+      time: document.getElementById('time'),
     };
+
+    // ---- Rendering primitives ----
 
     function escapeHtmlChar(c) {
       switch (c) {
@@ -173,36 +309,105 @@
       }
     }
 
-    function imageToAscii(img, opts) {
-      const { width, color, ramp, invert } = opts;
-      const aspect = img.naturalHeight / img.naturalWidth;
-      const height = Math.max(1, Math.round(aspect * width * 0.5));
+    function sourceDims(src) {
+      if (!src) return null;
+      const w = src.videoWidth || src.naturalWidth || 0;
+      const h = src.videoHeight || src.naturalHeight || 0;
+      if (!w || !h) return null;
+      return { w, h };
+    }
 
+    function effectiveWidth() {
+      return state.mode === 'image'
+        ? state.width
+        : Math.min(state.width, LIVE_WIDTH_CAP);
+    }
+
+    function currentOpts() {
+      return {
+        width:  effectiveWidth(),
+        color:  state.color,
+        ramp:   state.ramp,
+        invert: state.invert,
+        edges:  state.edges,
+      };
+    }
+
+    // Sobel-derived character for one pixel given a precomputed luminance grid.
+    function edgeChar(lum, x, y, w, h) {
+      if (x === 0 || x === w - 1 || y === 0 || y === h - 1) return ' ';
+      const tl = lum[(y - 1) * w + (x - 1)];
+      const t  = lum[(y - 1) * w + x];
+      const tr = lum[(y - 1) * w + (x + 1)];
+      const l  = lum[y * w + (x - 1)];
+      const r  = lum[y * w + (x + 1)];
+      const bl = lum[(y + 1) * w + (x - 1)];
+      const b  = lum[(y + 1) * w + x];
+      const br = lum[(y + 1) * w + (x + 1)];
+      const gx = -tl + tr - 2 * l + 2 * r - bl + br;
+      const gy = -tl - 2 * t - tr + bl + 2 * b + br;
+      const mag = Math.sqrt(gx * gx + gy * gy);
+      if (mag < EDGE_THRESHOLD) return ' ';
+      const deg = (Math.atan2(gy, gx) * 180 / Math.PI + 180) % 180;
+      if (deg < 22.5 || deg >= 157.5) return '-';
+      if (deg < 67.5)  return '/';
+      if (deg < 112.5) return '|';
+      return '\\';
+    }
+
+    function sampleSource(src, width, height) {
       const canvas = els.canvas;
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
+      ctx.drawImage(src, 0, 0, width, height);
+      return ctx.getImageData(0, 0, width, height).data;
+    }
 
-      const { data } = ctx.getImageData(0, 0, width, height);
-      const rampStr = RAMPS[ramp];
-      const last = rampStr.length - 1;
+    function computeLuminance(data, width, height) {
+      const lum = new Float32Array(width * height);
+      for (let i = 0, j = 0; j < lum.length; i += 4, j++) {
+        lum[j] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      }
+      return lum;
+    }
+
+    // Produce one ASCII character + its source-pixel color for a given cell.
+    function cellFor(data, lum, x, y, w, h, opts, rampStr, rampLast) {
+      const i = (y * w + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      let ch;
+      if (opts.edges) {
+        ch = edgeChar(lum, x, y, w, h);
+      } else {
+        const L = 0.299 * r + 0.587 * g + 0.114 * b;
+        let idx = Math.round((L / 255) * rampLast);
+        if (opts.invert) idx = rampLast - idx;
+        ch = rampStr[idx];
+      }
+      return { ch, r, g, b };
+    }
+
+    function imageToAsciiHtml(src, dims, opts) {
+      const width = opts.width;
+      const aspect = dims.h / dims.w;
+      const height = Math.max(1, Math.round(aspect * width * 0.5));
+
+      const data = sampleSource(src, width, height);
+      const lum = opts.edges ? computeLuminance(data, width, height) : null;
+      const rampStr = RAMPS[opts.ramp];
+      const rampLast = rampStr.length - 1;
 
       let out = '';
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const i = (y * width + x) * 4;
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          let idx = Math.round((lum / 255) * last);
-          if (invert) idx = last - idx;
-          const ch = escapeHtmlChar(rampStr[idx]);
-          if (color) {
-            out += '<span style="color:rgb(' + r + ',' + g + ',' + b + ')">' + ch + '</span>';
+          const { ch, r, g, b } = cellFor(
+            data, lum, x, y, width, height, opts, rampStr, rampLast);
+          const esc = escapeHtmlChar(ch);
+          if (opts.color) {
+            out += '<span style="color:rgb(' + r + ',' + g + ',' + b + ')">' + esc + '</span>';
           } else {
-            out += ch;
+            out += esc;
           }
         }
         out += '\n';
@@ -210,37 +415,377 @@
       return out;
     }
 
+    // Off-screen canvas rendering for PNG export. Cell ratio is 1:2 (w:h)
+    // to match the live display's aspect-corrected grid.
+    function imageToAsciiCanvas(src, dims, opts, scale = 2) {
+      const width = opts.width;
+      const aspect = dims.h / dims.w;
+      const height = Math.max(1, Math.round(aspect * width * 0.5));
+
+      const data = sampleSource(src, width, height);
+      const lum = opts.edges ? computeLuminance(data, width, height) : null;
+      const rampStr = RAMPS[opts.ramp];
+      const rampLast = rampStr.length - 1;
+
+      const charW = 8 * scale;
+      const charH = 16 * scale;
+      const fontSize = 14 * scale;
+
+      const out = document.createElement('canvas');
+      out.width = width * charW;
+      out.height = height * charH;
+      const ctx = out.getContext('2d');
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.font = fontSize + 'px "Courier New", monospace';
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const { ch, r, g, b } = cellFor(
+            data, lum, x, y, width, height, opts, rampStr, rampLast);
+          if (ch === ' ') continue;
+          ctx.fillStyle = opts.color ? `rgb(${r},${g},${b})` : '#0f0';
+          ctx.fillText(ch, x * charW, y * charH);
+        }
+      }
+      return out;
+    }
+
     function render() {
-      if (!state.image) {
+      if (!state.source) {
         els.output.innerHTML = '';
         els.empty.style.display = '';
         return;
       }
+      const dims = sourceDims(state.source);
+      if (!dims) return;
       els.empty.style.display = 'none';
-      els.output.innerHTML = imageToAscii(state.image, state);
+      els.output.innerHTML = imageToAsciiHtml(state.source, dims, currentOpts());
     }
 
-    function loadImageFromUrl(url) {
-      const img = new Image();
-      img.onload = () => {
-        state.image = img;
-        render();
+    // ---- Live loop ----
+
+    let rafId = null;
+    let lastRenderTime = 0;
+
+    function startLiveLoop() {
+      stopLiveLoop();
+      lastRenderTime = 0;
+      const tick = (now) => {
+        if (now - lastRenderTime >= FRAME_INTERVAL_MS) {
+          render();
+          lastRenderTime = now;
+        }
+        rafId = requestAnimationFrame(tick);
       };
-      img.onerror = () => showError('Failed to load image.');
-      img.src = url;
+      rafId = requestAnimationFrame(tick);
     }
 
-    function handleFile(file) {
-      if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        showError('Not an image file.');
-        return;
+    function stopLiveLoop() {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
       }
+    }
+
+    // ---- Status line ----
+
+    function updateStatus() {
+      const parts = [];
+      parts.push(state.mode);
+      parts.push(effectiveWidth() + ' cols');
+      if (state.edges) {
+        parts.push('edge detection');
+      } else {
+        parts.push('ramp: ' + state.ramp);
+        if (state.invert) parts.push('inverted');
+      }
+      parts.push('color: ' + (state.color ? 'on' : 'off'));
+      els.status.textContent = '[' + parts.join(' | ') + ']';
+    }
+
+    // ---- URL hash sync ----
+
+    function stateToHash() {
+      const p = new URLSearchParams();
+      p.set('width', state.width);
+      p.set('color', state.color ? 1 : 0);
+      p.set('ramp', state.ramp);
+      p.set('invert', state.invert ? 1 : 0);
+      p.set('edges', state.edges ? 1 : 0);
+      return '#' + p.toString();
+    }
+
+    function loadStateFromHash() {
+      const p = new URLSearchParams(window.location.hash.slice(1));
+      const w = parseInt(p.get('width'), 10);
+      if (Number.isFinite(w) && w >= 40 && w <= 300) state.width = w;
+      if (p.has('color')) state.color = p.get('color') !== '0';
+      const ramp = p.get('ramp');
+      if (ramp && RAMP_KEYS.includes(ramp)) state.ramp = ramp;
+      if (p.has('invert')) state.invert = p.get('invert') === '1';
+      if (p.has('edges')) state.edges = p.get('edges') === '1';
+    }
+
+    function syncHash() {
+      history.replaceState(null, '', stateToHash());
+    }
+
+    function applyStateToControls() {
+      els.width.value = state.width;
+      els.widthVal.textContent = state.width;
+      els.color.checked = state.color;
+      els.ramp.value = state.ramp;
+      els.invert.checked = state.invert;
+      els.edges.checked = state.edges;
+      els.ramp.disabled = state.edges;
+    }
+
+    // Called whenever a setting changes. Keeps URL, status, and view in sync.
+    function onSettingChange() {
+      els.ramp.disabled = state.edges;
+      syncHash();
+      updateStatus();
+      // Live modes re-render on the next animation frame; image needs an explicit push.
+      if (state.mode === 'image') render();
+    }
+
+    // ---- Mode controllers ----
+
+    function setEmptyMessage(html, isError = false) {
+      els.empty.innerHTML = html;
+      els.empty.classList.toggle('error', !!isError);
+    }
+
+    function defaultEmptyForMode() {
+      if (state.mode === 'image') {
+        setEmptyMessage('drop an image anywhere — or <a id="browse">browse</a>');
+      } else if (state.mode === 'video') {
+        setEmptyMessage('drop a video file — or <a id="browse">browse</a>');
+      } else {
+        setEmptyMessage('');
+      }
+      const browse = document.getElementById('browse');
+      if (browse) {
+        browse.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (state.mode === 'video') els.videoFileInput.click();
+          else els.fileInput.click();
+        });
+      }
+    }
+
+    function updateModeUI() {
+      for (const btn of els.modeGroup.querySelectorAll('.mode-btn')) {
+        btn.classList.toggle('active', btn.dataset.mode === state.mode);
+      }
+      els.liveIndicator.classList.toggle('show', state.mode === 'webcam');
+      els.capNote.classList.toggle('show', state.mode !== 'image');
+      els.videoControls.classList.toggle('show',
+        state.mode === 'video' && !!state.source);
+    }
+
+    function cleanup() {
+      stopLiveLoop();
+      if (webcamStream) {
+        webcamStream.getTracks().forEach((t) => t.stop());
+        webcamStream = null;
+      }
+      els.videoSource.pause();
+      els.videoSource.srcObject = null;
+      if (videoObjectUrl) {
+        URL.revokeObjectURL(videoObjectUrl);
+        videoObjectUrl = null;
+      }
+      els.videoSource.removeAttribute('src');
+      els.videoSource.load();
+      state.source = null;
+    }
+
+    function setMode(newMode) {
+      if (newMode === state.mode && newMode !== 'video') return;
+      cleanup();
+      state.mode = newMode;
+
+      if (newMode === 'image') {
+        state.source = lastImage;
+        defaultEmptyForMode();
+        updateModeUI();
+        updateStatus();
+        render();
+      } else if (newMode === 'webcam') {
+        defaultEmptyForMode();
+        updateModeUI();
+        updateStatus();
+        startWebcam();
+      } else if (newMode === 'video') {
+        defaultEmptyForMode();
+        updateModeUI();
+        updateStatus();
+        render();
+        els.videoFileInput.click();
+      }
+    }
+
+    // ---- Image mode ----
+
+    function loadImageFile(file) {
       const reader = new FileReader();
-      reader.onload = () => loadImageFromUrl(reader.result);
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          if (state.mode !== 'image') {
+            cleanup();
+            state.mode = 'image';
+            updateModeUI();
+            defaultEmptyForMode();
+          }
+          lastImage = img;
+          state.source = img;
+          updateStatus();
+          render();
+        };
+        img.onerror = () => showError('Failed to decode image.');
+        img.src = reader.result;
+      };
       reader.onerror = () => showError('Failed to read file.');
       reader.readAsDataURL(file);
     }
+
+    // ---- Webcam mode ----
+
+    async function startWebcam() {
+      setEmptyMessage('requesting camera access…');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true, audio: false,
+        });
+        if (state.mode !== 'webcam') {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        webcamStream = stream;
+        els.videoSource.srcObject = stream;
+        await els.videoSource.play();
+        state.source = els.videoSource;
+        els.videoSource.addEventListener('loadedmetadata', () => render(),
+          { once: true });
+        startLiveLoop();
+      } catch (err) {
+        setEmptyMessage('camera access denied — check your browser settings', true);
+        showError('Camera access denied.');
+        setTimeout(() => {
+          if (state.mode === 'webcam') setMode('image');
+        }, 2500);
+      }
+    }
+
+    // ---- Video mode ----
+
+    function loadVideoFile(file) {
+      if (!file.type.startsWith('video/')) {
+        showError('Not a video file.');
+        return;
+      }
+      if (state.mode !== 'video') {
+        cleanup();
+        state.mode = 'video';
+        updateModeUI();
+        defaultEmptyForMode();
+      }
+      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+      videoObjectUrl = URL.createObjectURL(file);
+      els.videoSource.srcObject = null;
+      els.videoSource.src = videoObjectUrl;
+      els.videoSource.loop = true;
+      els.videoSource.muted = true;
+      els.videoSource.play().then(() => {
+        state.source = els.videoSource;
+        updateModeUI();
+        updateStatus();
+        startLiveLoop();
+      }).catch((err) => showError('Could not play video: ' + err.message));
+    }
+
+    function formatTime(s) {
+      if (!isFinite(s) || s < 0) s = 0;
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60).toString().padStart(2, '0');
+      return m + ':' + sec;
+    }
+
+    els.videoSource.addEventListener('timeupdate', () => {
+      if (state.mode !== 'video') return;
+      els.time.textContent =
+        formatTime(els.videoSource.currentTime) + ' / ' +
+        formatTime(els.videoSource.duration);
+    });
+    els.videoSource.addEventListener('play', () => {
+      if (state.mode === 'video') els.playpause.textContent = '⏸';
+    });
+    els.videoSource.addEventListener('pause', () => {
+      if (state.mode === 'video') els.playpause.textContent = '▶';
+    });
+    els.playpause.addEventListener('click', () => {
+      if (els.videoSource.paused) els.videoSource.play();
+      else els.videoSource.pause();
+    });
+
+    // ---- File router ----
+
+    function handleDroppedFile(file) {
+      if (!file) return;
+      if (file.type.startsWith('image/')) loadImageFile(file);
+      else if (file.type.startsWith('video/')) loadVideoFile(file);
+      else showError('Not an image or video file.');
+    }
+
+    // ---- Save / share ----
+
+    function saveAsPng() {
+      if (!state.source) {
+        showError('Load an image first.');
+        return;
+      }
+      const dims = sourceDims(state.source);
+      if (!dims) {
+        showError('Source not ready.');
+        return;
+      }
+      const canvas = imageToAsciiCanvas(state.source, dims, currentOpts(), 2);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          showError('Could not export PNG.');
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'ascii-' + Date.now() + '.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    }
+
+    let shareResetTimer = null;
+    async function copyShareUrl() {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        els.share.textContent = '[copied]';
+        clearTimeout(shareResetTimer);
+        shareResetTimer = setTimeout(() => {
+          els.share.textContent = '[share]';
+        }, 1500);
+      } catch (err) {
+        showError('Clipboard unavailable (needs HTTPS/localhost).');
+      }
+    }
+
+    // ---- Errors ----
 
     let errorTimer = null;
     function showError(msg) {
@@ -251,44 +796,61 @@
     }
 
     // ---- Settings wiring ----
+
     els.width.addEventListener('input', () => {
       state.width = parseInt(els.width.value, 10);
       els.widthVal.textContent = state.width;
-      render();
+      onSettingChange();
     });
     els.color.addEventListener('change', () => {
       state.color = els.color.checked;
-      render();
+      onSettingChange();
     });
     els.ramp.addEventListener('change', () => {
       state.ramp = els.ramp.value;
-      render();
+      onSettingChange();
     });
     els.invert.addEventListener('change', () => {
       state.invert = els.invert.checked;
-      render();
+      onSettingChange();
+    });
+    els.edges.addEventListener('change', () => {
+      state.edges = els.edges.checked;
+      onSettingChange();
+    });
+    els.save.addEventListener('click', saveAsPng);
+    els.share.addEventListener('click', copyShareUrl);
+
+    // ---- Mode buttons ----
+
+    els.modeGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mode-btn');
+      if (!btn) return;
+      setMode(btn.dataset.mode);
     });
 
-    // ---- File input / browse link ----
-    els.browse.addEventListener('click', (e) => {
-      e.preventDefault();
-      els.fileInput.click();
-    });
+    // ---- File inputs ----
+
     els.fileInput.addEventListener('change', (e) => {
-      handleFile(e.target.files[0]);
+      const f = e.target.files[0];
+      if (f) loadImageFile(f);
       els.fileInput.value = '';
     });
+    els.videoFileInput.addEventListener('change', (e) => {
+      const f = e.target.files[0];
+      if (f) loadVideoFile(f);
+      els.videoFileInput.value = '';
+    });
 
-    // ---- Drag and drop on the whole page ----
+    // ---- Drag and drop ----
+
     let dragDepth = 0;
     window.addEventListener('dragenter', (e) => {
       e.preventDefault();
       dragDepth++;
       document.body.classList.add('dragging');
     });
-    window.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    });
+    window.addEventListener('dragover', (e) => { e.preventDefault(); });
     window.addEventListener('dragleave', (e) => {
       e.preventDefault();
       dragDepth = Math.max(0, dragDepth - 1);
@@ -298,11 +860,19 @@
       e.preventDefault();
       dragDepth = 0;
       document.body.classList.remove('dragging');
-      const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      handleFile(file);
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      handleDroppedFile(f);
     });
 
+    // ---- Boot ----
+
+    loadStateFromHash();
+    applyStateToControls();
+    defaultEmptyForMode();
+    updateModeUI();
+    updateStatus();
+    syncHash(); // normalize the URL to include any defaulted keys
     render();
-    </script>
+  </script>
 </body>
 </html>
