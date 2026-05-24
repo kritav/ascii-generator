@@ -219,6 +219,11 @@
     </label>
     <label><input type="checkbox" id="invert" /> Invert</label>
     <label><input type="checkbox" id="edges" /> Edges</label>
+    <label id="edge-threshold-label" style="display:none">
+      Edge threshold
+      <input type="range" id="edge-threshold" min="0" max="150" value="80" />
+      <span id="edge-threshold-val">80</span>
+    </label>
     <button class="action-btn" id="save" title="Download PNG">[save]</button>
     <button class="action-btn" id="share" title="Copy URL">[share]</button>
     <span id="live-indicator">● LIVE</span>
@@ -254,7 +259,6 @@
 
     const LIVE_WIDTH_CAP = 150;
     const FRAME_INTERVAL_MS = 33; // ~30 fps
-    const EDGE_THRESHOLD = 50;
 
     const state = {
       mode: 'image',
@@ -264,6 +268,7 @@
       ramp: 'standard',
       invert: false,
       edges: false,
+      edgeThreshold: 80,
     };
 
     let lastImage = null;
@@ -281,6 +286,9 @@
       ramp: document.getElementById('ramp'),
       invert: document.getElementById('invert'),
       edges: document.getElementById('edges'),
+      edgeThreshold: document.getElementById('edge-threshold'),
+      edgeThresholdVal: document.getElementById('edge-threshold-val'),
+      edgeThresholdLabel: document.getElementById('edge-threshold-label'),
       save: document.getElementById('save'),
       share: document.getElementById('share'),
       status: document.getElementById('status'),
@@ -330,11 +338,12 @@
         ramp:   state.ramp,
         invert: state.invert,
         edges:  state.edges,
+        edgeThreshold: state.edgeThreshold,
       };
     }
 
     // Sobel-derived character for one pixel given a precomputed luminance grid.
-    function edgeChar(lum, x, y, w, h) {
+    function edgeChar(lum, x, y, w, h, threshold) {
       if (x === 0 || x === w - 1 || y === 0 || y === h - 1) return ' ';
       const tl = lum[(y - 1) * w + (x - 1)];
       const t  = lum[(y - 1) * w + x];
@@ -347,7 +356,7 @@
       const gx = -tl + tr - 2 * l + 2 * r - bl + br;
       const gy = -tl - 2 * t - tr + bl + 2 * b + br;
       const mag = Math.sqrt(gx * gx + gy * gy);
-      if (mag < EDGE_THRESHOLD) return ' ';
+      if (mag < threshold) return ' ';
       const deg = (Math.atan2(gy, gx) * 180 / Math.PI + 180) % 180;
       if (deg < 22.5 || deg >= 157.5) return '-';
       if (deg < 67.5)  return '/';
@@ -378,7 +387,7 @@
       const r = data[i], g = data[i + 1], b = data[i + 2];
       let ch;
       if (opts.edges) {
-        ch = edgeChar(lum, x, y, w, h);
+        ch = edgeChar(lum, x, y, w, h, opts.edgeThreshold);
       } else {
         const L = 0.299 * r + 0.587 * g + 0.114 * b;
         let idx = Math.round((L / 255) * rampLast);
@@ -515,6 +524,7 @@
       p.set('ramp', state.ramp);
       p.set('invert', state.invert ? 1 : 0);
       p.set('edges', state.edges ? 1 : 0);
+      p.set('et', state.edgeThreshold);
       return '#' + p.toString();
     }
 
@@ -527,6 +537,8 @@
       if (ramp && RAMP_KEYS.includes(ramp)) state.ramp = ramp;
       if (p.has('invert')) state.invert = p.get('invert') === '1';
       if (p.has('edges')) state.edges = p.get('edges') === '1';
+      const et = parseInt(p.get('et'), 10);
+      if (Number.isFinite(et) && et >= 0 && et <= 150) state.edgeThreshold = et;
     }
 
     function syncHash() {
@@ -541,11 +553,15 @@
       els.invert.checked = state.invert;
       els.edges.checked = state.edges;
       els.ramp.disabled = state.edges;
+      els.edgeThreshold.value = state.edgeThreshold;
+      els.edgeThresholdVal.textContent = state.edgeThreshold;
+      els.edgeThresholdLabel.style.display = state.edges ? '' : 'none';
     }
 
     // Called whenever a setting changes. Keeps URL, status, and view in sync.
     function onSettingChange() {
       els.ramp.disabled = state.edges;
+      els.edgeThresholdLabel.style.display = state.edges ? '' : 'none';
       syncHash();
       updateStatus();
       // Live modes re-render on the next animation frame; image needs an explicit push.
@@ -816,6 +832,11 @@
     });
     els.edges.addEventListener('change', () => {
       state.edges = els.edges.checked;
+      onSettingChange();
+    });
+    els.edgeThreshold.addEventListener('input', () => {
+      state.edgeThreshold = parseInt(els.edgeThreshold.value, 10);
+      els.edgeThresholdVal.textContent = state.edgeThreshold;
       onSettingChange();
     });
     els.save.addEventListener('click', saveAsPng);
