@@ -3,186 +3,349 @@
 <head>
   <meta charset="UTF-8" />
   <title>ASCII Art Generator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg:          #0a0e0a;
+      --bg-elevated: #0d120d;
+      --fg:          #c0e0c0;
+      --accent:      #4ade80;
+      --dim:         #5a7a5a;
+      --border:      #1a2a1a;
+      --error:       #f87171;
+    }
+
     * { box-sizing: border-box; }
     html, body {
       margin: 0;
       padding: 0;
       min-height: 100vh;
-      background: #0a0a0a;
-      color: #0f0;
-      font-family: 'Courier New', Courier, monospace;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.4;
     }
     body {
-      border: 2px solid transparent;
+      border: 1px solid transparent;
       transition: border-color 0.1s;
     }
-    body.dragging { border-color: #0f0; }
+    body.dragging { border-color: var(--accent); }
 
-    #controls {
+    button {
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      color: inherit;
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 1px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* ---- Top bar ---- */
+    #topbar {
       display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      align-items: center;
-      padding: 10px 16px;
-      border-bottom: 1px solid #1a3a1a;
-      font-size: 12px;
+      align-items: stretch;
+      gap: 24px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
       position: sticky;
       top: 0;
-      background: #0a0a0a;
       z-index: 10;
     }
-    #controls label {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      color: #0f0;
+    .group {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
     }
-    #controls input[type="range"] { accent-color: #0f0; }
-    #controls select,
-    #controls input[type="range"] {
-      background: #0a0a0a;
-      color: #0f0;
-      border: 1px solid #1a3a1a;
-      font-family: inherit;
-      font-size: 12px;
-      padding: 2px 4px;
-    }
-    #controls select:disabled { opacity: 0.4; cursor: not-allowed; }
-    #width-val {
-      display: inline-block;
-      min-width: 32px;
-      text-align: right;
-      color: #6f6;
+    .divider {
+      width: 1px;
+      background: var(--border);
+      align-self: stretch;
     }
 
-    .mode-group {
-      display: inline-flex;
-      border: 1px solid #1a3a1a;
+    /* ---- Settings (label + control stack) ---- */
+    .setting {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: flex-start;
+      min-height: 44px;
+      justify-content: flex-end;
     }
+    .setting-label {
+      font-size: 11px;
+      color: var(--dim);
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--fg);
+    }
+    .readout {
+      color: var(--dim);
+      font-size: 13px;
+      min-width: 28px;
+      text-align: right;
+    }
+
+    /* ---- Mode buttons ---- */
     .mode-btn {
       background: transparent;
-      color: #0f0;
-      border: none;
-      border-right: 1px solid #1a3a1a;
-      padding: 4px 12px;
-      font-family: inherit;
-      font-size: 12px;
+      color: var(--dim);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 14px;
       cursor: pointer;
+      font-weight: 400;
+      transition: color 0.1s, border-color 0.1s, background 0.1s;
     }
-    .mode-btn:last-child { border-right: none; }
+    .mode-btn:hover:not(.active) {
+      color: var(--fg);
+      border-color: var(--fg);
+    }
     .mode-btn.active {
-      background: #0f0;
-      color: #0a0a0a;
+      background: var(--accent);
+      color: var(--bg);
+      border-color: var(--accent);
+      font-weight: 500;
     }
-    .mode-btn:hover:not(.active) { background: #1a3a1a; }
 
+    /* ---- Text toggle ---- */
+    .toggle {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      min-width: 32px;
+      text-align: left;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    .toggle[data-state="on"]  { color: var(--accent); }
+    .toggle[data-state="off"] { color: var(--dim); }
+
+    /* ---- Custom dropdown ---- */
+    .dropdown { position: relative; }
+    .dropdown-trigger {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      min-width: 104px;
+      text-align: left;
+      font-weight: 500;
+    }
+    .dropdown-trigger::after {
+      content: ' ▾';
+      color: var(--dim);
+      font-weight: 400;
+    }
+    .dropdown-trigger:hover { border-color: var(--fg); }
+    .dropdown-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      list-style: none;
+      padding: 4px 0;
+      margin: 0;
+      min-width: 104px;
+      z-index: 20;
+    }
+    .dropdown-menu[hidden] { display: none; }
+    .dropdown-menu li {
+      padding: 6px 12px;
+      cursor: pointer;
+      color: var(--fg);
+    }
+    .dropdown-menu li:hover { background: var(--border); }
+    .dropdown-menu li.selected { color: var(--accent); }
+
+    /* ---- Sliders ---- */
+    .slider {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 2px;
+      background: var(--border);
+      cursor: pointer;
+      outline: none;
+      width: 120px;
+      border-radius: 2px;
+      padding: 0;
+      margin: 0;
+    }
+    .slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+    .slider::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+
+    /* ---- Action buttons ---- */
     .action-btn {
       background: transparent;
-      color: #0f0;
-      border: none;
-      font-family: inherit;
-      font-size: 12px;
+      border: 1px solid var(--border);
+      color: var(--fg);
+      padding: 5px 12px;
+      border-radius: 4px;
       cursor: pointer;
-      padding: 2px 4px;
-      min-width: 56px;
-      text-align: left;
+      transition: color 0.1s, border-color 0.1s;
     }
-    .action-btn:hover { color: #6f6; }
-    .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    #cap-note {
-      font-size: 11px;
-      color: #6f6;
-      opacity: 0.7;
-      display: none;
+    .action-btn:hover {
+      border-color: var(--fg);
     }
-    #cap-note.show { display: inline; }
+    .action-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .action-btn.copied {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .action-btn.failed {
+      color: var(--error);
+      border-color: var(--error);
+    }
 
-    #live-indicator {
+    /* ---- Live indicator ---- */
+    .live-indicator {
       margin-left: auto;
-      color: #f44;
-      font-size: 12px;
       display: none;
-      letter-spacing: 1px;
+      align-items: center;
+      gap: 6px;
+      color: var(--dim);
+      align-self: center;
     }
-    #live-indicator.show { display: inline; }
+    .live-indicator.show { display: flex; }
+    .live-dot {
+      color: var(--error);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.3; }
+    }
 
+    /* ---- Status line ---- */
     #status {
-      padding: 6px 16px;
-      font-size: 11px;
-      color: #6f6;
-      opacity: 0.7;
-      border-bottom: 1px solid #1a3a1a;
-      background: #0a0a0a;
+      background: var(--bg-elevated);
+      color: var(--dim);
+      padding: 8px 20px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
       position: sticky;
-      top: 41px;
+      top: 73px;
       z-index: 9;
     }
+    #status[hidden] { display: none; }
+    .status-key { color: var(--dim); }
+    .status-val { color: var(--fg); margin-left: 4px; margin-right: 16px; }
+    .status-val:last-child { margin-right: 0; }
+    .status-note {
+      color: var(--dim);
+      margin-left: 4px;
+    }
 
+    /* ---- Main area ---- */
     main {
       position: relative;
-      padding: 16px;
+      padding: 0;
     }
     #empty {
-      text-align: center;
-      padding: 80px 16px;
-      color: #0f0;
-      font-size: 14px;
-      opacity: 0.7;
+      min-height: calc(100vh - 200px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--dim);
+      gap: 10px;
+      padding: 40px 20px;
     }
-    #empty a {
-      color: #0f0;
-      text-decoration: underline;
+    .empty-line { font-size: 14px; }
+    .empty-or   { color: var(--border); font-size: 12px; }
+    .empty-action {
+      color: var(--fg);
       cursor: pointer;
     }
-    #empty.error { color: #f66; opacity: 1; }
+    .empty-action:hover { color: var(--accent); }
+    .empty-error { color: var(--error); }
+    .kbd { color: var(--accent); }
+    .cursor {
+      display: inline-block;
+      margin-top: 16px;
+      color: var(--accent);
+      animation: blink 1.1s steps(2) infinite;
+      font-weight: 500;
+    }
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
 
     #output {
       margin: 0;
+      padding: 20px;
       font-size: 8px;
       line-height: 1;
       letter-spacing: 0;
       white-space: pre;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
       overflow-x: auto;
     }
     #output:empty { display: none; }
 
+    /* ---- Video controls ---- */
     #video-controls {
       display: none;
       align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
-      border-top: 1px solid #1a3a1a;
-      font-size: 12px;
-      background: #0a0a0a;
+      gap: 16px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-elevated);
       position: sticky;
       bottom: 0;
     }
     #video-controls.show { display: flex; }
-    #playpause {
-      background: transparent;
-      color: #0f0;
-      border: 1px solid #1a3a1a;
-      font-family: inherit;
-      font-size: 14px;
-      cursor: pointer;
-      padding: 2px 12px;
-      min-width: 36px;
-    }
-    #playpause:hover { background: #1a3a1a; }
-    #time { color: #6f6; }
+    #time { color: var(--dim); font-size: 12px; }
 
+    /* ---- Error toast ---- */
     #error {
       position: fixed;
       bottom: 60px;
       left: 50%;
       transform: translateX(-50%);
       padding: 8px 16px;
-      background: #300;
-      color: #f66;
-      border: 1px solid #f66;
+      background: var(--bg-elevated);
+      color: var(--error);
+      border: 1px solid var(--error);
+      border-radius: 4px;
       font-size: 12px;
       opacity: 0;
       pointer-events: none;
@@ -195,49 +358,91 @@
   </style>
 </head>
 <body>
-  <header id="controls">
-    <div class="mode-group" id="mode-group">
+  <header id="topbar">
+    <!-- mode -->
+    <div class="group" id="mode-group">
       <button class="mode-btn active" data-mode="image">image</button>
       <button class="mode-btn" data-mode="webcam">webcam</button>
       <button class="mode-btn" data-mode="video">video</button>
     </div>
-    <label>
-      Width
-      <input type="range" id="width" min="40" max="300" value="120" />
-      <span id="width-val">120</span>
-    </label>
-    <span id="cap-note">capped at 150 in live modes</span>
-    <label><input type="checkbox" id="color" checked /> Color</label>
-    <label>
-      Ramp
-      <select id="ramp">
-        <option value="standard">Standard</option>
-        <option value="simple">Simple</option>
-        <option value="blocks">Blocks</option>
-        <option value="binary">Binary</option>
-      </select>
-    </label>
-    <label><input type="checkbox" id="invert" /> Invert</label>
-    <label><input type="checkbox" id="edges" /> Edges</label>
-    <label id="edge-threshold-label" style="display:none">
-      Edge threshold
-      <input type="range" id="edge-threshold" min="0" max="150" value="80" />
-      <span id="edge-threshold-val">80</span>
-    </label>
-    <button class="action-btn" id="save" title="Download PNG">[save]</button>
-    <button class="action-btn" id="share" title="Copy URL">[share]</button>
-    <span id="live-indicator">● LIVE</span>
+
+    <div class="divider"></div>
+
+    <!-- settings -->
+    <div class="group">
+      <div class="setting">
+        <span class="setting-label">width</span>
+        <div class="setting-control">
+          <input type="range" id="width" min="40" max="300" value="120" class="slider" />
+          <span class="readout" id="width-val">120</span>
+        </div>
+      </div>
+
+      <div class="setting" id="ramp-setting">
+        <span class="setting-label" id="ramp-label">ramp</span>
+        <div class="dropdown" id="ramp-dropdown">
+          <button class="dropdown-trigger" id="ramp-trigger"
+                  aria-haspopup="listbox" aria-expanded="false">standard</button>
+          <ul class="dropdown-menu" id="ramp-menu" role="listbox" hidden>
+            <li data-value="standard" role="option">standard</li>
+            <li data-value="simple"   role="option">simple</li>
+            <li data-value="blocks"   role="option">blocks</li>
+            <li data-value="binary"   role="option">binary</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="setting">
+        <span class="setting-label">color</span>
+        <button class="toggle" id="color-toggle"
+                data-state="on" aria-pressed="true">on</button>
+      </div>
+
+      <div class="setting" id="invert-setting">
+        <span class="setting-label" id="invert-label">invert</span>
+        <button class="toggle" id="invert-toggle"
+                data-state="off" aria-pressed="false">off</button>
+      </div>
+
+      <div class="setting">
+        <span class="setting-label">edges</span>
+        <button class="toggle" id="edges-toggle"
+                data-state="off" aria-pressed="false">off</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- actions -->
+    <div class="group">
+      <div class="setting">
+        <span class="setting-label">&nbsp;</span>
+        <button class="action-btn" id="copy" disabled>[ copy ]</button>
+      </div>
+      <div class="setting">
+        <span class="setting-label">&nbsp;</span>
+        <button class="action-btn" id="save">[ save ]</button>
+      </div>
+      <div class="setting">
+        <span class="setting-label">&nbsp;</span>
+        <button class="action-btn" id="share">[ share ]</button>
+      </div>
+    </div>
+
+    <div class="live-indicator" id="live-indicator">
+      <span class="live-dot">●</span> live
+    </div>
   </header>
 
-  <div id="status">[idle]</div>
+  <div id="status" hidden></div>
 
   <main>
-    <div id="empty">drop an image anywhere — or <a id="browse">browse</a></div>
+    <div id="empty"></div>
     <pre id="output"></pre>
   </main>
 
   <footer id="video-controls">
-    <button id="playpause" title="play/pause">⏸</button>
+    <button class="action-btn" id="playpause" title="play/pause">❚❚</button>
     <span id="time">0:00 / 0:00</span>
   </footer>
 
@@ -248,7 +453,8 @@
   <div id="error"></div>
 
   <script>
-    // All ramps stored dark -> light. Standard is Paul Bourke's 70-char ramp.
+    // ---- Constants ----
+
     const RAMPS = {
       standard: '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. ',
       simple:   '@%#*+=-:. ',
@@ -256,9 +462,11 @@
       binary:   '# ',
     };
     const RAMP_KEYS = Object.keys(RAMPS);
-
     const LIVE_WIDTH_CAP = 150;
-    const FRAME_INTERVAL_MS = 33; // ~30 fps
+    const FRAME_INTERVAL_MS = 33;
+    const EDGE_THRESHOLD = 175;
+
+    // ---- State ----
 
     const state = {
       mode: 'image',
@@ -268,43 +476,51 @@
       ramp: 'standard',
       invert: false,
       edges: false,
-      edgeThreshold: 80,
+      lastRenderMs: null,
     };
 
     let lastImage = null;
     let webcamStream = null;
     let videoObjectUrl = null;
 
+    // ---- Element refs ----
+
     const els = {
+      topbar: document.getElementById('topbar'),
       output: document.getElementById('output'),
       empty: document.getElementById('empty'),
       canvas: document.getElementById('canvas'),
       videoSource: document.getElementById('video-source'),
+
+      modeGroup: document.getElementById('mode-group'),
+
       width: document.getElementById('width'),
       widthVal: document.getElementById('width-val'),
-      color: document.getElementById('color'),
-      ramp: document.getElementById('ramp'),
-      invert: document.getElementById('invert'),
-      edges: document.getElementById('edges'),
-      edgeThreshold: document.getElementById('edge-threshold'),
-      edgeThresholdVal: document.getElementById('edge-threshold-val'),
-      edgeThresholdLabel: document.getElementById('edge-threshold-label'),
+
+      rampTrigger: document.getElementById('ramp-trigger'),
+      rampMenu: document.getElementById('ramp-menu'),
+
+      colorToggle: document.getElementById('color-toggle'),
+      invertToggle: document.getElementById('invert-toggle'),
+      edgesToggle: document.getElementById('edges-toggle'),
+
+      copy: document.getElementById('copy'),
       save: document.getElementById('save'),
       share: document.getElementById('share'),
-      status: document.getElementById('status'),
-      fileInput: document.getElementById('file-input'),
-      videoFileInput: document.getElementById('video-file-input'),
-      browse: document.getElementById('browse'),
-      error: document.getElementById('error'),
-      modeGroup: document.getElementById('mode-group'),
+
       liveIndicator: document.getElementById('live-indicator'),
-      capNote: document.getElementById('cap-note'),
+      status: document.getElementById('status'),
+
       videoControls: document.getElementById('video-controls'),
       playpause: document.getElementById('playpause'),
       time: document.getElementById('time'),
+
+      fileInput: document.getElementById('file-input'),
+      videoFileInput: document.getElementById('video-file-input'),
+      error: document.getElementById('error'),
     };
 
-    // ---- Rendering primitives ----
+    // ==== Rendering pipeline (unchanged from previous hours) ====
 
     function escapeHtmlChar(c) {
       switch (c) {
@@ -333,17 +549,16 @@
 
     function currentOpts() {
       return {
-        width:  effectiveWidth(),
-        color:  state.color,
-        ramp:   state.ramp,
+        width: effectiveWidth(),
+        color: state.color,
+        ramp: state.ramp,
         invert: state.invert,
-        edges:  state.edges,
-        edgeThreshold: state.edgeThreshold,
+        edges: state.edges,
       };
     }
 
-    // Sobel-derived character for one pixel given a precomputed luminance grid.
-    function edgeChar(lum, x, y, w, h, threshold) {
+    // Returns the edge character at (x, y), or ' ' if gradient is below threshold.
+    function edgeChar(lum, x, y, w, h) {
       if (x === 0 || x === w - 1 || y === 0 || y === h - 1) return ' ';
       const tl = lum[(y - 1) * w + (x - 1)];
       const t  = lum[(y - 1) * w + x];
@@ -356,7 +571,7 @@
       const gx = -tl + tr - 2 * l + 2 * r - bl + br;
       const gy = -tl - 2 * t - tr + bl + 2 * b + br;
       const mag = Math.sqrt(gx * gx + gy * gy);
-      if (mag < threshold) return ' ';
+      if (mag < EDGE_THRESHOLD) return ' ';
       const deg = (Math.atan2(gy, gx) * 180 / Math.PI + 180) % 180;
       if (deg < 22.5 || deg >= 157.5) return '-';
       if (deg < 67.5)  return '/';
@@ -381,18 +596,18 @@
       return lum;
     }
 
-    // Produce one ASCII character + its source-pixel color for a given cell.
     function cellFor(data, lum, x, y, w, h, opts, rampStr, rampLast) {
       const i = (y * w + x) * 4;
       const r = data[i], g = data[i + 1], b = data[i + 2];
-      let ch;
+      // Base character from luminance + current ramp
+      const L = 0.299 * r + 0.587 * g + 0.114 * b;
+      let idx = Math.round((L / 255) * rampLast);
+      if (opts.invert) idx = rampLast - idx;
+      let ch = rampStr[idx];
+      // Edge overlay: replace the ramp char where the gradient is strong enough
       if (opts.edges) {
-        ch = edgeChar(lum, x, y, w, h, opts.edgeThreshold);
-      } else {
-        const L = 0.299 * r + 0.587 * g + 0.114 * b;
-        let idx = Math.round((L / 255) * rampLast);
-        if (opts.invert) idx = rampLast - idx;
-        ch = rampStr[idx];
+        const ech = edgeChar(lum, x, y, w, h);
+        if (ech !== ' ') ch = ech;
       }
       return { ch, r, g, b };
     }
@@ -424,8 +639,6 @@
       return out;
     }
 
-    // Off-screen canvas rendering for PNG export. Cell ratio is 1:2 (w:h)
-    // to match the live display's aspect-corrected grid.
     function imageToAsciiCanvas(src, dims, opts, scale = 2) {
       const width = opts.width;
       const aspect = dims.h / dims.w;
@@ -444,9 +657,9 @@
       out.width = width * charW;
       out.height = height * charH;
       const ctx = out.getContext('2d');
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = '#0a0e0a';
       ctx.fillRect(0, 0, out.width, out.height);
-      ctx.font = fontSize + 'px "Courier New", monospace';
+      ctx.font = fontSize + 'px "JetBrains Mono", "Courier New", monospace';
       ctx.textBaseline = 'top';
       ctx.textAlign = 'left';
 
@@ -455,7 +668,7 @@
           const { ch, r, g, b } = cellFor(
             data, lum, x, y, width, height, opts, rampStr, rampLast);
           if (ch === ' ') continue;
-          ctx.fillStyle = opts.color ? `rgb(${r},${g},${b})` : '#0f0';
+          ctx.fillStyle = opts.color ? `rgb(${r},${g},${b})` : '#c0e0c0';
           ctx.fillText(ch, x * charW, y * charH);
         }
       }
@@ -466,15 +679,24 @@
       if (!state.source) {
         els.output.innerHTML = '';
         els.empty.style.display = '';
+        state.lastRenderMs = null;
+        els.copy.disabled = true;
+        updateStatus();
         return;
       }
       const dims = sourceDims(state.source);
       if (!dims) return;
       els.empty.style.display = 'none';
+
+      const t0 = performance.now();
       els.output.innerHTML = imageToAsciiHtml(state.source, dims, currentOpts());
+      state.lastRenderMs = Math.round(performance.now() - t0);
+
+      els.copy.disabled = false;
+      updateStatus();
     }
 
-    // ---- Live loop ----
+    // ==== Live loop ====
 
     let rafId = null;
     let lastRenderTime = 0;
@@ -499,23 +721,41 @@
       }
     }
 
-    // ---- Status line ----
+    // ==== Status line (derived info only) ====
 
     function updateStatus() {
-      const parts = [];
-      parts.push(state.mode);
-      parts.push(effectiveWidth() + ' cols');
-      if (state.edges) {
-        parts.push('edge detection');
-      } else {
-        parts.push('ramp: ' + state.ramp);
-        if (state.invert) parts.push('inverted');
+      if (!state.source) {
+        els.status.hidden = true;
+        return;
       }
-      parts.push('color: ' + (state.color ? 'on' : 'off'));
-      els.status.textContent = '[' + parts.join(' | ') + ']';
+      const dims = sourceDims(state.source);
+      if (!dims) {
+        els.status.hidden = true;
+        return;
+      }
+      const parts = [];
+
+      parts.push(kv('source', dims.w + '×' + dims.h));
+
+      const eff = effectiveWidth();
+      if (eff < state.width) {
+        parts.push(kv('cols', eff,
+          ` <span class="status-note">(capped from ${state.width})</span>`));
+      } else {
+        parts.push(kv('cols', eff));
+      }
+
+      if (state.lastRenderMs != null) parts.push(kv('render', state.lastRenderMs + 'ms'));
+
+      els.status.innerHTML = parts.join('');
+      els.status.hidden = false;
     }
 
-    // ---- URL hash sync ----
+    function kv(k, v, note = '') {
+      return `<span class="status-key">${k}=</span><span class="status-val">${v}${note}</span>`;
+    }
+
+    // ==== URL hash sync ====
 
     function stateToHash() {
       const p = new URLSearchParams();
@@ -524,7 +764,6 @@
       p.set('ramp', state.ramp);
       p.set('invert', state.invert ? 1 : 0);
       p.set('edges', state.edges ? 1 : 0);
-      p.set('et', state.edgeThreshold);
       return '#' + p.toString();
     }
 
@@ -537,60 +776,78 @@
       if (ramp && RAMP_KEYS.includes(ramp)) state.ramp = ramp;
       if (p.has('invert')) state.invert = p.get('invert') === '1';
       if (p.has('edges')) state.edges = p.get('edges') === '1';
-      const et = parseInt(p.get('et'), 10);
-      if (Number.isFinite(et) && et >= 0 && et <= 150) state.edgeThreshold = et;
     }
 
     function syncHash() {
       history.replaceState(null, '', stateToHash());
     }
 
+    // ==== Control updates ====
+
     function applyStateToControls() {
       els.width.value = state.width;
       els.widthVal.textContent = state.width;
-      els.color.checked = state.color;
-      els.ramp.value = state.ramp;
-      els.invert.checked = state.invert;
-      els.edges.checked = state.edges;
-      els.ramp.disabled = state.edges;
-      els.edgeThreshold.value = state.edgeThreshold;
-      els.edgeThresholdVal.textContent = state.edgeThreshold;
-      els.edgeThresholdLabel.style.display = state.edges ? '' : 'none';
+      paintSliderFill(els.width);
+
+      setToggle(els.colorToggle, state.color);
+      setRampTrigger(state.ramp);
+      setToggle(els.invertToggle, state.invert);
+      setToggle(els.edgesToggle, state.edges);
     }
 
-    // Called whenever a setting changes. Keeps URL, status, and view in sync.
+    function setToggle(el, on) {
+      el.dataset.state = on ? 'on' : 'off';
+      el.textContent = on ? 'on' : 'off';
+      el.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+
+    function setRampTrigger(ramp) {
+      els.rampTrigger.textContent = ramp;
+      for (const li of els.rampMenu.querySelectorAll('li')) {
+        li.classList.toggle('selected', li.dataset.value === ramp);
+      }
+    }
+
+    function paintSliderFill(slider) {
+      const min = parseFloat(slider.min);
+      const max = parseFloat(slider.max);
+      const v = parseFloat(slider.value);
+      const pct = ((v - min) / (max - min)) * 100;
+      slider.style.background =
+        `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`;
+    }
+
     function onSettingChange() {
-      els.ramp.disabled = state.edges;
-      els.edgeThresholdLabel.style.display = state.edges ? '' : 'none';
       syncHash();
       updateStatus();
-      // Live modes re-render on the next animation frame; image needs an explicit push.
       if (state.mode === 'image') render();
     }
 
-    // ---- Mode controllers ----
+    // ==== Mode controllers ====
 
-    function setEmptyMessage(html, isError = false) {
-      els.empty.innerHTML = html;
-      els.empty.classList.toggle('error', !!isError);
+    function renderEmptyForMode() {
+      if (state.mode === 'image') {
+        els.empty.innerHTML = `
+          <div class="empty-line empty-action" data-empty-action="image">drop an image anywhere</div>
+          <div class="empty-or">— or —</div>
+          <div class="empty-line">click <span class="kbd" data-empty-mode="webcam">[ webcam ]</span> above</div>
+          <span class="cursor">_</span>
+        `;
+      } else if (state.mode === 'video') {
+        els.empty.innerHTML = `
+          <div class="empty-line empty-action" data-empty-action="video">drop a video file anywhere</div>
+          <div class="empty-or">— or —</div>
+          <div class="empty-line">click <span class="kbd" data-empty-mode="image">[ image ]</span> for a still</div>
+          <span class="cursor">_</span>
+        `;
+      } else {
+        els.empty.innerHTML = `<span class="cursor">_</span>`;
+      }
     }
 
-    function defaultEmptyForMode() {
-      if (state.mode === 'image') {
-        setEmptyMessage('drop an image anywhere — or <a id="browse">browse</a>');
-      } else if (state.mode === 'video') {
-        setEmptyMessage('drop a video file — or <a id="browse">browse</a>');
-      } else {
-        setEmptyMessage('');
-      }
-      const browse = document.getElementById('browse');
-      if (browse) {
-        browse.addEventListener('click', (e) => {
-          e.preventDefault();
-          if (state.mode === 'video') els.videoFileInput.click();
-          else els.fileInput.click();
-        });
-      }
+    function setEmptyStatus(text, isError = false) {
+      const cls = isError ? 'empty-line empty-error' : 'empty-line';
+      els.empty.innerHTML = `<div class="${cls}">${text}</div><span class="cursor">_</span>`;
     }
 
     function updateModeUI() {
@@ -598,7 +855,6 @@
         btn.classList.toggle('active', btn.dataset.mode === state.mode);
       }
       els.liveIndicator.classList.toggle('show', state.mode === 'webcam');
-      els.capNote.classList.toggle('show', state.mode !== 'image');
       els.videoControls.classList.toggle('show',
         state.mode === 'video' && !!state.source);
     }
@@ -627,25 +883,22 @@
 
       if (newMode === 'image') {
         state.source = lastImage;
-        defaultEmptyForMode();
+        renderEmptyForMode();
         updateModeUI();
-        updateStatus();
         render();
       } else if (newMode === 'webcam') {
-        defaultEmptyForMode();
+        renderEmptyForMode();
         updateModeUI();
-        updateStatus();
         startWebcam();
       } else if (newMode === 'video') {
-        defaultEmptyForMode();
+        renderEmptyForMode();
         updateModeUI();
-        updateStatus();
         render();
         els.videoFileInput.click();
       }
     }
 
-    // ---- Image mode ----
+    // ==== Mode: image ====
 
     function loadImageFile(file) {
       const reader = new FileReader();
@@ -655,12 +908,11 @@
           if (state.mode !== 'image') {
             cleanup();
             state.mode = 'image';
+            renderEmptyForMode();
             updateModeUI();
-            defaultEmptyForMode();
           }
           lastImage = img;
           state.source = img;
-          updateStatus();
           render();
         };
         img.onerror = () => showError('Failed to decode image.');
@@ -670,10 +922,10 @@
       reader.readAsDataURL(file);
     }
 
-    // ---- Webcam mode ----
+    // ==== Mode: webcam ====
 
     async function startWebcam() {
-      setEmptyMessage('requesting camera access…');
+      setEmptyStatus('requesting camera access…');
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true, audio: false,
@@ -686,11 +938,11 @@
         els.videoSource.srcObject = stream;
         await els.videoSource.play();
         state.source = els.videoSource;
-        els.videoSource.addEventListener('loadedmetadata', () => render(),
-          { once: true });
+        els.videoSource.addEventListener('loadedmetadata',
+          () => render(), { once: true });
         startLiveLoop();
       } catch (err) {
-        setEmptyMessage('camera access denied — check your browser settings', true);
+        setEmptyStatus('camera access denied — check your browser settings', true);
         showError('Camera access denied.');
         setTimeout(() => {
           if (state.mode === 'webcam') setMode('image');
@@ -698,7 +950,7 @@
       }
     }
 
-    // ---- Video mode ----
+    // ==== Mode: video ====
 
     function loadVideoFile(file) {
       if (!file.type.startsWith('video/')) {
@@ -708,8 +960,8 @@
       if (state.mode !== 'video') {
         cleanup();
         state.mode = 'video';
+        renderEmptyForMode();
         updateModeUI();
-        defaultEmptyForMode();
       }
       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
       videoObjectUrl = URL.createObjectURL(file);
@@ -720,7 +972,6 @@
       els.videoSource.play().then(() => {
         state.source = els.videoSource;
         updateModeUI();
-        updateStatus();
         startLiveLoop();
       }).catch((err) => showError('Could not play video: ' + err.message));
     }
@@ -739,7 +990,7 @@
         formatTime(els.videoSource.duration);
     });
     els.videoSource.addEventListener('play', () => {
-      if (state.mode === 'video') els.playpause.textContent = '⏸';
+      if (state.mode === 'video') els.playpause.textContent = '❚❚';
     });
     els.videoSource.addEventListener('pause', () => {
       if (state.mode === 'video') els.playpause.textContent = '▶';
@@ -749,7 +1000,7 @@
       else els.videoSource.pause();
     });
 
-    // ---- File router ----
+    // ==== File router ====
 
     function handleDroppedFile(file) {
       if (!file) return;
@@ -758,7 +1009,7 @@
       else showError('Not an image or video file.');
     }
 
-    // ---- Save / share ----
+    // ==== Save / share ====
 
     function saveAsPng() {
       if (!state.source) {
@@ -787,21 +1038,44 @@
       }, 'image/png');
     }
 
+    let copyResetTimer = null;
+    async function copyAscii() {
+      if (!state.source) return;
+      const text = els.output.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        els.copy.textContent = '[ copied ]';
+        els.copy.classList.add('copied');
+        els.copy.classList.remove('failed');
+      } catch (err) {
+        els.copy.textContent = '[ failed ]';
+        els.copy.classList.add('failed');
+        els.copy.classList.remove('copied');
+      }
+      clearTimeout(copyResetTimer);
+      copyResetTimer = setTimeout(() => {
+        els.copy.textContent = '[ copy ]';
+        els.copy.classList.remove('copied', 'failed');
+      }, 1500);
+    }
+
     let shareResetTimer = null;
     async function copyShareUrl() {
       try {
         await navigator.clipboard.writeText(window.location.href);
-        els.share.textContent = '[copied]';
+        els.share.textContent = '[ copied ]';
+        els.share.classList.add('copied');
         clearTimeout(shareResetTimer);
         shareResetTimer = setTimeout(() => {
-          els.share.textContent = '[share]';
+          els.share.textContent = '[ share ]';
+          els.share.classList.remove('copied');
         }, 1500);
       } catch (err) {
         showError('Clipboard unavailable (needs HTTPS/localhost).');
       }
     }
 
-    // ---- Errors ----
+    // ==== Errors ====
 
     let errorTimer = null;
     function showError(msg) {
@@ -811,47 +1085,85 @@
       errorTimer = setTimeout(() => els.error.classList.remove('show'), 2500);
     }
 
-    // ---- Settings wiring ----
+    // ==== Wiring ====
 
+    // Width slider
     els.width.addEventListener('input', () => {
       state.width = parseInt(els.width.value, 10);
       els.widthVal.textContent = state.width;
+      paintSliderFill(els.width);
       onSettingChange();
     });
-    els.color.addEventListener('change', () => {
-      state.color = els.color.checked;
-      onSettingChange();
-    });
-    els.ramp.addEventListener('change', () => {
-      state.ramp = els.ramp.value;
-      onSettingChange();
-    });
-    els.invert.addEventListener('change', () => {
-      state.invert = els.invert.checked;
-      onSettingChange();
-    });
-    els.edges.addEventListener('change', () => {
-      state.edges = els.edges.checked;
-      onSettingChange();
-    });
-    els.edgeThreshold.addEventListener('input', () => {
-      state.edgeThreshold = parseInt(els.edgeThreshold.value, 10);
-      els.edgeThresholdVal.textContent = state.edgeThreshold;
-      onSettingChange();
-    });
-    els.save.addEventListener('click', saveAsPng);
-    els.share.addEventListener('click', copyShareUrl);
 
-    // ---- Mode buttons ----
+    // Color toggle
+    els.colorToggle.addEventListener('click', () => {
+      state.color = !state.color;
+      setToggle(els.colorToggle, state.color);
+      onSettingChange();
+    });
 
+    // Invert toggle
+    els.invertToggle.addEventListener('click', () => {
+      state.invert = !state.invert;
+      setToggle(els.invertToggle, state.invert);
+      onSettingChange();
+    });
+
+    // Edges toggle
+    els.edgesToggle.addEventListener('click', () => {
+      state.edges = !state.edges;
+      setToggle(els.edgesToggle, state.edges);
+      onSettingChange();
+    });
+
+    // Ramp dropdown
+    els.rampTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const showing = els.rampMenu.hidden === false;
+      els.rampMenu.hidden = showing;
+      els.rampTrigger.setAttribute('aria-expanded', String(!showing));
+    });
+    els.rampMenu.addEventListener('click', (e) => {
+      const li = e.target.closest('li');
+      if (!li) return;
+      state.ramp = li.dataset.value;
+      setRampTrigger(state.ramp);
+      els.rampMenu.hidden = true;
+      els.rampTrigger.setAttribute('aria-expanded', 'false');
+      onSettingChange();
+    });
+    document.addEventListener('click', () => {
+      if (!els.rampMenu.hidden) {
+        els.rampMenu.hidden = true;
+        els.rampTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+
+    // Mode buttons
     els.modeGroup.addEventListener('click', (e) => {
       const btn = e.target.closest('.mode-btn');
       if (!btn) return;
       setMode(btn.dataset.mode);
     });
 
-    // ---- File inputs ----
+    // Action buttons
+    els.copy.addEventListener('click', copyAscii);
+    els.save.addEventListener('click', saveAsPng);
+    els.share.addEventListener('click', copyShareUrl);
 
+    // Empty-state interactions (click to open file picker, kbd hints to switch mode)
+    els.empty.addEventListener('click', (e) => {
+      const action = e.target.closest('[data-empty-action]');
+      if (action) {
+        if (action.dataset.emptyAction === 'video') els.videoFileInput.click();
+        else els.fileInput.click();
+        return;
+      }
+      const modeHint = e.target.closest('[data-empty-mode]');
+      if (modeHint) setMode(modeHint.dataset.emptyMode);
+    });
+
+    // File inputs
     els.fileInput.addEventListener('change', (e) => {
       const f = e.target.files[0];
       if (f) loadImageFile(f);
@@ -863,8 +1175,7 @@
       els.videoFileInput.value = '';
     });
 
-    // ---- Drag and drop ----
-
+    // Drag and drop
     let dragDepth = 0;
     window.addEventListener('dragenter', (e) => {
       e.preventDefault();
@@ -885,14 +1196,13 @@
       handleDroppedFile(f);
     });
 
-    // ---- Boot ----
+    // ==== Boot ====
 
     loadStateFromHash();
     applyStateToControls();
-    defaultEmptyForMode();
+    renderEmptyForMode();
     updateModeUI();
-    updateStatus();
-    syncHash(); // normalize the URL to include any defaulted keys
+    syncHash();
     render();
   </script>
 </body>
