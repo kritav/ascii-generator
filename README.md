@@ -2,6 +2,18 @@
 
 A browser-based tool for turning images, video files, and live webcam feeds into colored ASCII art. Single `index.html`, no build step, vanilla JS.
 
+## Examples
+
+<div align="left">
+  <img src="examples/example1.png" width="500" />
+</div>
+<div align="left">
+  <img src="examples/example2.png" width="500" />
+</div>
+<div align="left">
+  <img src="examples/example3.png" width="500" />
+</div>
+
 ## Features
 
 - **Image, webcam, and video modes** — drop a file or grant camera access; live modes render at ~30fps
@@ -22,6 +34,4 @@ Open `index.html` directly for image mode and URL sharing. For webcam, video fil
 python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
-
-## Examples
 
